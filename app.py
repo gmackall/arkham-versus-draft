@@ -720,7 +720,7 @@ def load_card_evaluations():
     
     return evaluations
 
-def convert_to_draftmancer_format(arkham_cards, selected_pack_names):
+def convert_to_draftmancer_format(arkham_cards, selected_pack_names, include_xp_cards=False):
     """Convert Arkham cards to Draftmancer custom card list format."""
     # Load card evaluations
     card_evaluations = load_card_evaluations()
@@ -774,9 +774,9 @@ def convert_to_draftmancer_format(arkham_cards, selected_pack_names):
         is_required_card = card_code in required_card_codes
         
         if is_from_selected_pack or is_required_card:
-            # Filter out cards with XP > 0
+            # Filter out cards with XP > 0 unless include_xp_cards is enabled
             xp = card.get('xp', 0)
-            if xp is None or xp <= 0:
+            if include_xp_cards or xp is None or xp <= 0:
                 # Skip cards with 'b' suffix that are linked backs of other cards
                 code = card.get('code', '')
                 if code.endswith('b'):
@@ -840,6 +840,11 @@ def convert_to_draftmancer_format(arkham_cards, selected_pack_names):
                 
         # Get rating from card evaluations, default to 0 if not found
         card_rating = card_evaluations.get(card_name, 0)
+        
+        # Append XP level to name for XP > 0 cards so upgraded versions are distinguishable
+        card_xp = card.get('xp', 0)
+        if include_xp_cards and card_xp is not None and card_xp > 0:
+            card_name = f"{card_name} ({card_xp})"
         
         draftmancer_card = {
             "name": card_name,
@@ -951,7 +956,7 @@ def convert_to_draftmancer_format(arkham_cards, selected_pack_names):
         "filtered_cards": filtered_cards  # Include filtered cards for MainSlot generation
     }
 
-def generate_player_cards(selected_pack_codes, pack_quantities=None, excluded_cards=None, taboo_modifications=None, unique_cards_only=False):
+def generate_player_cards(selected_pack_codes, pack_quantities=None, excluded_cards=None, taboo_modifications=None, unique_cards_only=False, include_xp_cards=False):
     """Generate the PlayerCards section with actual card quantities from pack data, separated by set."""
     # Dictionary to track card quantities by (card_name, pack_code, collector_number) tuples
     card_set_quantities = {}
@@ -1004,16 +1009,20 @@ def generate_player_cards(selected_pack_codes, pack_quantities=None, excluded_ca
             # Skip basic weakness cards
             if card.get('subtype_code') == 'basicweakness':
                 continue
-            # Skip cards with XP > 0 (considering taboo modifications)
+            # Skip cards with XP > 0 (considering taboo modifications) unless include_xp_cards is enabled
             xp = apply_taboo_xp_modification(card, taboo_modifications)
-            if xp is not None and xp > 0:
+            if not include_xp_cards and xp is not None and xp > 0:
                 continue
             
             card_name = card.get('name', '')
             
-            # Skip excluded cards
+            # Skip excluded cards (using base name before XP suffix)
             if excluded_cards and card_name.lower() in excluded_cards:
                 continue
+            
+            # Append XP level to name for XP > 0 cards so upgraded versions are distinguishable
+            if include_xp_cards and xp is not None and xp > 0:
+                card_name = f"{card_name} ({xp})"
             
             collector_number = str(card.get('code', ''))
             base_quantity = card.get('quantity', 0)
@@ -1633,10 +1642,13 @@ def draft():
     player_cards_per_pack = int(request.form.get('playerCardsPerPack', 15))
     player_card_packs_per_player = int(request.form.get('playerCardPacksPerPlayer', 3))
     unique_cards_only = request.form.get('uniqueCardsOnly') == 'on'
+    include_xp_cards = request.form.get('includeXpCards') == 'on'
     
     # TODO: Implement unique cards logic when backend is ready
     if unique_cards_only:
         print("Unique cards only setting enabled - limiting each card to appear at most once")
+    if include_xp_cards:
+        print("Include XP cards setting enabled - including all higher level cards in the draft pool")
     
     # Get all cards and convert to Draftmancer format
     print(f"Generating Draftmancer format for {len(selected_sets)} selected sets with quantities: {pack_quantities}")
@@ -1650,7 +1662,7 @@ def draft():
                              error="Unable to load card data")
 
     try:
-        draftmancer_data = convert_to_draftmancer_format(arkham_cards, selected_sets)
+        draftmancer_data = convert_to_draftmancer_format(arkham_cards, selected_sets, include_xp_cards)
 
         if "error" in draftmancer_data:
             return render_template('draft_result.html', selected_sets=selected_sets, 
@@ -1659,7 +1671,7 @@ def draft():
         # Generate cards for all three sheets with actual quantities and pack multipliers
         investigators_cards = generate_investigators_cards(draftmancer_data["selected_pack_codes"], pack_quantities, excluded_cards, taboo_modifications, unique_cards_only)
         basic_weaknesses_cards = generate_basic_weaknesses_cards(draftmancer_data["selected_pack_codes"], pack_quantities, excluded_cards, taboo_modifications, unique_cards_only)
-        player_cards = generate_player_cards(draftmancer_data["selected_pack_codes"], pack_quantities, excluded_cards, taboo_modifications, unique_cards_only)
+        player_cards = generate_player_cards(draftmancer_data["selected_pack_codes"], pack_quantities, excluded_cards, taboo_modifications, unique_cards_only, include_xp_cards)
         
         # Add cards to include to appropriate lists and get custom cards
         try:
@@ -1762,9 +1774,12 @@ def draft_now():
     player_cards_per_pack = int(request.form.get('playerCardsPerPack', 15))
     player_card_packs_per_player = int(request.form.get('playerCardPacksPerPlayer', 3))
     unique_cards_only = request.form.get('uniqueCardsOnly') == 'on'
+    include_xp_cards = request.form.get('includeXpCards') == 'on'
     
     if unique_cards_only:
         print("Unique cards only setting enabled for immediate draft - limiting each card to appear at most once")
+    if include_xp_cards:
+        print("Include XP cards setting enabled for immediate draft - including all higher level cards in the draft pool")
     
     # Get all cards and convert to Draftmancer format
     print(f"Generating Draftmancer format for immediate draft with {len(selected_sets)} selected sets and quantities: {pack_quantities}")
@@ -1776,7 +1791,7 @@ def draft_now():
     if not arkham_cards:
         return jsonify({"error": "Unable to load card data"}), 500
 
-    draftmancer_data = convert_to_draftmancer_format(arkham_cards, selected_sets)
+    draftmancer_data = convert_to_draftmancer_format(arkham_cards, selected_sets, include_xp_cards)
 
     if "error" in draftmancer_data:
         return jsonify({"error": draftmancer_data["error"]}), 500
@@ -1784,7 +1799,7 @@ def draft_now():
     # Generate cards for all three sheets with actual quantities and pack multipliers
     investigators_cards = generate_investigators_cards(draftmancer_data["selected_pack_codes"], pack_quantities, excluded_cards, taboo_modifications, unique_cards_only)
     basic_weaknesses_cards = generate_basic_weaknesses_cards(draftmancer_data["selected_pack_codes"], pack_quantities, excluded_cards, taboo_modifications, unique_cards_only)
-    player_cards = generate_player_cards(draftmancer_data["selected_pack_codes"], pack_quantities, excluded_cards, taboo_modifications, unique_cards_only)
+    player_cards = generate_player_cards(draftmancer_data["selected_pack_codes"], pack_quantities, excluded_cards, taboo_modifications, unique_cards_only, include_xp_cards)
     
     # Add cards to include to appropriate lists and get custom cards
     try:
@@ -1886,9 +1901,12 @@ def get_draft_content():
     basic_weaknesses_per_pack = int(request.form.get('basicWeaknessesPerPack', 3))
     player_cards_per_pack = int(request.form.get('playerCardsPerPack', 15))
     unique_cards_only = request.form.get('uniqueCardsOnly') == 'on'
+    include_xp_cards = request.form.get('includeXpCards') == 'on'
     
     if unique_cards_only:
         print("Unique cards only setting enabled for draft content - limiting each card to appear at most once")
+    if include_xp_cards:
+        print("Include XP cards setting enabled for draft content - including all higher level cards in the draft pool")
     
     try:
         arkham_cards = get_arkham_cards()
@@ -1898,7 +1916,7 @@ def get_draft_content():
         
         # Convert to draftmancer format (only if we have selected sets)
         if selected_sets:
-            draftmancer_data = convert_to_draftmancer_format(arkham_cards, selected_sets)
+            draftmancer_data = convert_to_draftmancer_format(arkham_cards, selected_sets, include_xp_cards)
             if "error" in draftmancer_data:
                 return jsonify({"error": draftmancer_data["error"]}), 500
         else:
@@ -1914,7 +1932,7 @@ def get_draft_content():
         # Generate cards for all three sheets
         investigators_cards = generate_investigators_cards(draftmancer_data["selected_pack_codes"], pack_quantities, excluded_cards, taboo_modifications, unique_cards_only)
         basic_weaknesses_cards = generate_basic_weaknesses_cards(draftmancer_data["selected_pack_codes"], pack_quantities, excluded_cards, taboo_modifications, unique_cards_only)
-        player_cards = generate_player_cards(draftmancer_data["selected_pack_codes"], pack_quantities, excluded_cards, taboo_modifications, unique_cards_only)
+        player_cards = generate_player_cards(draftmancer_data["selected_pack_codes"], pack_quantities, excluded_cards, taboo_modifications, unique_cards_only, include_xp_cards)
         
         # Add cards to include to appropriate lists and get custom cards
         try:
