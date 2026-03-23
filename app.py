@@ -961,10 +961,6 @@ def generate_player_cards(selected_pack_codes, pack_quantities=None, excluded_ca
     # Dictionary to track card quantities by (card_name, pack_code, collector_number) tuples
     card_set_quantities = {}
     
-    # Get the main cards cache to verify which cards are player cards
-    main_cards = get_arkham_cards()
-    player_card_codes = set(card.get('code') for card in main_cards if card.get('code'))
-    
     # Create pack code to name mapping for quantity lookup
     packs_data = get_packs()
     pack_code_to_name = {pack['code']: pack['name'] for pack in packs_data} if packs_data else {}
@@ -989,10 +985,7 @@ def generate_player_cards(selected_pack_codes, pack_quantities=None, excluded_ca
         pack_multiplier = pack_quantities.get(pack_name, 1) if pack_quantities else 1
         
         for card in pack_cards:
-            # Only include cards that exist in the main cards cache (player cards)
             card_code = card.get('code', '')
-            if card_code not in player_card_codes:
-                continue
             
             # Skip forbidden cards from taboo list
             if card_code in forbidden_cards:
@@ -1138,10 +1131,6 @@ def generate_investigators_cards(selected_pack_codes, pack_quantities=None, excl
     # Dictionary to track cards by (name, normalized_pack): card_name -> {normalized_pack -> (card_data, pack_data)}
     cards_by_name_and_pack = {}
     
-    # Get the main cards cache to verify which cards are player cards
-    main_cards = get_arkham_cards()
-    player_card_codes = set(card.get('code') for card in main_cards if card.get('code'))
-    
     # Initialize excluded cards and taboo modifications
     if excluded_cards is None:
         excluded_cards = set()
@@ -1174,10 +1163,7 @@ def generate_investigators_cards(selected_pack_codes, pack_quantities=None, excl
         pack_data = pack_code_to_pack.get(pack_code, {})
         
         for card in pack_cards:
-            # Only include cards that exist in the main cards cache (player cards)
             card_code = card.get('code', '')
-            if card_code not in player_card_codes:
-                continue
             
             # Skip forbidden cards from taboo list
             if card_code in forbidden_cards:
@@ -1265,10 +1251,6 @@ def generate_basic_weaknesses_cards(selected_pack_codes, pack_quantities=None, e
     # Dictionary to track best card by name: card_name -> (card_data, pack_data)
     best_cards_by_name = {}
     
-    # Get the main cards cache to verify which cards are player cards
-    main_cards = get_arkham_cards()
-    player_card_codes = set(card.get('code') for card in main_cards if card.get('code'))
-    
     # Get pack data for priority logic
     packs_data = get_packs()
     pack_code_to_pack = {pack['code']: pack for pack in packs_data} if packs_data else {}
@@ -1291,10 +1273,7 @@ def generate_basic_weaknesses_cards(selected_pack_codes, pack_quantities=None, e
         pack_data = pack_code_to_pack.get(pack_code, {})
         
         for card in pack_cards:
-            # Only include cards that exist in the main cards cache (player cards)
             card_code = card.get('code', '')
-            if card_code not in player_card_codes:
-                continue
             
             # Skip forbidden cards from taboo list
             if card_code in forbidden_cards:
